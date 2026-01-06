@@ -1,0 +1,17 @@
+{
+    "name": "ycstar\/amapopen",
+    "description": "高德打车开发平台",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "ycstar",
+            "email": "547098838@qq.com"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Ycstar\\Amapopen\\": "src"
+        }
+    }
+}
