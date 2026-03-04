@@ -102,6 +102,69 @@ class AmapOpen
     }
 
     /**
+     * 查询附近代驾司机
+     *
+     * 根据传入的经纬度查询附近可用代驾司机
+     *
+     * @param string      $lng       经度 (必填)
+     * @param string      $lat       纬度 (必填)
+     * @param array|null  $priceMode 价格模式，支持传递多个：0默认SP定价，20特惠一口价 (选填)
+     * @param int|null    $radius    调度半径，单位米 (选填)
+     * @return array 附近司机列表
+     * @throws InvalidResponseException
+     */
+    public function getNearbyDrivers(
+        string $lng,
+        string $lat,
+        ?array $priceMode = null,
+        ?int $radius = null
+    ): array {
+        // 验证经度
+        if (!is_numeric($lng) || floatval($lng) < -180 || floatval($lng) > 180) {
+            throw new InvalidResponseException("经度必须在-180到180之间");
+        }
+
+        // 验证纬度
+        if (!is_numeric($lat) || floatval($lat) < -90 || floatval($lat) > 90) {
+            throw new InvalidResponseException("纬度必须在-90到90之间");
+        }
+
+        // 验证价格模式
+        if ($priceMode !== null) {
+            foreach ($priceMode as $mode) {
+                if (!in_array($mode, [0, 20])) {
+                    throw new InvalidResponseException("价格模式必须为0（默认SP定价）或20（特惠一口价）");
+                }
+            }
+        }
+
+        // 验证调度半径
+        if ($radius !== null && ($radius < 0 || $radius > 50000)) {
+            throw new InvalidResponseException("调度半径必须在0-50000米之间");
+        }
+
+        // 构建请求参数
+        $params = [
+            "lng" => $lng,
+            "lat" => $lat,
+        ];
+
+        // 添加可选参数
+        if ($priceMode !== null) {
+            $params["priceMode"] = $priceMode;
+        }
+        if ($radius !== null) {
+            $params["radius"] = $radius;
+        }
+
+        return $this->callPostApi(
+            $this->host . "/ws/boss/channel/openapi/chauffeur/nearbyDriver/query",
+            $params,
+            false,  // 使用表单格式
+        );
+    }
+
+    /**
      * 调用POST接口
      *
      * 公共响应格式:
@@ -113,12 +176,13 @@ class AmapOpen
      *   "traceId": String      // 当前请求的链路跟踪id
      * }
      *
-     * @param string $url  接口地址
-     * @param array  $data 业务数据
+     * @param string $url     接口地址
+     * @param array  $data    业务数据
+     * @param bool   $useJson 是否使用JSON格式，默认false使用表单格式
      * @return array 响应数据
      * @throws InvalidResponseException
      */
-    protected function callPostApi(string $url, array $data): array
+    protected function callPostApi(string $url, array $data, bool $useJson = false): array
     {
         // 构建请求参数，包含公共参数
         $params = array_merge($data, [
@@ -135,8 +199,11 @@ class AmapOpen
         // 打印原始签名串用于调试
         $originalString = $this->buildOriginalSignString($params);
         error_log("[AmapOpen] Original signature string: " . $originalString);
+        if ($useJson) {
+            error_log("[AmapOpen] Request params: " . json_encode($params, JSON_UNESCAPED_UNICODE));
+        }
 
-        $response = $this->post($url, $params);
+        $response = $this->post($url, $params, $useJson);
         $rs = json_decode($response, true);
 
         // 打印完整响应用于调试
@@ -177,8 +244,21 @@ class AmapOpen
      */
     private function buildOriginalSignString(array $params): string
     {
+        // 展开参数数组，处理数组类型的参数
+        $expandedParams = [];
+        foreach ($params as $key => $value) {
+            if (is_array($value)) {
+                // 数组参数展开为 key[0]=value0&key[1]=value1
+                foreach ($value as $index => $item) {
+                    $expandedParams[$key . '[' . $index . ']'] = $item;
+                }
+            } else {
+                $expandedParams[$key] = $value;
+            }
+        }
+
         // 过滤不参与签名的参数：sign、keyt、ent
-        $filteredParams = array_filter($params, function ($key) {
+        $filteredParams = array_filter($expandedParams, function ($key) {
             return $key !== 'sign' && $key !== 'keyt' && $key !== 'ent';
         }, ARRAY_FILTER_USE_KEY);
 
@@ -213,11 +293,12 @@ class AmapOpen
     /**
      * 发送POST请求
      *
-     * @param string $url    请求地址
-     * @param array  $params 请求参数
+     * @param string $url     请求地址
+     * @param array  $params  请求参数
+     * @param bool   $useJson 是否使用JSON格式，默认false使用表单格式
      * @return string 响应内容
      */
-    private function post(string $url, array $params): string
+    private function post(string $url, array $params, bool $useJson = false): string
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -225,10 +306,21 @@ class AmapOpen
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Content-Type: application/x-www-form-urlencoded",
-        ]);
+
+        if ($useJson) {
+            // 使用 JSON 格式
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($params, JSON_UNESCAPED_UNICODE));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/json",
+            ]);
+        } else {
+            // 使用表单格式
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/x-www-form-urlencoded",
+            ]);
+        }
+
         // SSL 验证配置
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
