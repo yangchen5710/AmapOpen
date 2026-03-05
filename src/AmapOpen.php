@@ -38,7 +38,7 @@ class AmapOpen
         string $appId,
         string $keyt,
         int $ent,
-        string $signKey,
+        string $signKey
     ) {
         $this->host = $host;
         $this->eId = $eId;
