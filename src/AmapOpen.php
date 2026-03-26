@@ -52,7 +52,7 @@ class AmapOpen
      * 创建工单
      *
      * @param string $amapOrderId     高德订单ID (必填)
-     * @param string $content          投诉内容描述，最多不超过40个汉字 (必填)
+     * @param string $content          投诉内容描述，最多不超过2048个汉字 (必填)
      * @param string $channelOrderId   渠道订单号(可选)
      * @return array 工单创建结果
      * @throws InvalidResponseException
@@ -63,8 +63,8 @@ class AmapOpen
         string $channelOrderId = ""
     ): array {
         // 验证投诉内容长度
-        if (mb_strlen($content) > 40) {
-            throw new InvalidResponseException("投诉内容描述不能超过40个汉字");
+        if (mb_strlen($content) > 2048) {
+            throw new InvalidResponseException("投诉内容描述不能超过2048个汉字");
         }
 
         $params = [
